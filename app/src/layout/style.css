@@ -1,0 +1,15 @@
+.header{
+    background-color: #00416A;
+    width: 100%;
+}
+.fontsize{
+    font-size: 17px;
+    /* color: #00416A; */
+}
+
+.login{
+    background-color: #edf6f9;
+    color: #00416A;
+    padding: 10px 50px;
+    font-size: 16px;
+}
