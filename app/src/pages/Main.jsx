@@ -6,6 +6,7 @@ import Img1 from '../assets/img1.png'
 import './style.css'
 import Brands from './Brands'
 import Products from './Products'
+import Footer from '../layout/Footer'
 
 function Main() {
   return (
@@ -73,6 +74,7 @@ function Main() {
     </div>
     <Brands/>
     <Products/>
+    <Footer/>
     </div>
   )
 }

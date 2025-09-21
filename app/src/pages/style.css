@@ -52,6 +52,9 @@
   font-size: 30px;
   font-weight: bold;
 }
+.product h1{
+  color: #00416A;
+}
 
 @media (max-width: 576px) {
   .font {
@@ -66,9 +69,7 @@
     width: inherit;
     margin: 10px;
   }
-  .brand-inner Row Col{
-    border: 1px solid white;
-  }
+
   .img-h{
     max-height: 200px;
   }

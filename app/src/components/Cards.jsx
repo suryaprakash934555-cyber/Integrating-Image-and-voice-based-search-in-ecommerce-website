@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import { Card } from 'react-bootstrap';
 import Button from './Button';
-import Shirt from '../assets/img7.png';
 import './style.css';
 
-function ProductCard() {
+function ProductCard({img}) {
   const [isWishlisted, setIsWishlisted] = useState(false);
   const [selectedColor, setSelectedColor] = useState('navy');
 
@@ -19,7 +18,7 @@ function ProductCard() {
           <div className="d-flex justify-content-center align-items-center p-3">
             <Card.Img 
               variant="top" 
-              src={Shirt} 
+              src={img} 
               alt="Casual Shirt" 
               className="product-img"
             />
@@ -77,9 +76,9 @@ function ProductCard() {
             ></div>
           </div>
           
-          <div className="d-flex justify-content-between">
-            <Button buttonname="Add to Cart" variant="outline-primary" />
-            <Button buttonname="Buy Now" />
+          <div className="d-grid justify-content-center">
+            <Button buttonname="Add to Cart" variant="outline-primary" bgcolor="#00416A" color="white" />
+            {/* <Button buttonname="Buy Now" /> */}
           </div>
         </Card.Body>
       </Card>
