@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
-import { Navbar } from 'react-bootstrap';
-import { Link } from 'react-router-dom';
+import { Navbar, Alert, Spinner, Badge } from 'react-bootstrap';
+import { Link, useNavigate } from 'react-router-dom';
 import Menu from './Menu';
 import Button from '../components/Button';
 import './style.css';
@@ -12,28 +12,53 @@ function Header() {
   const [recordingTime, setRecordingTime] = useState(0);
   const [selectedImage, setSelectedImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
-  const [transcriptionService, setTranscriptionService] = useState('assemblyai');
+  const [searchResults, setSearchResults] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [transcriptionService, setTranscriptionService] = useState('deepgram'); // Default to Deepgram
+  const [transcriptionResult, setTranscriptionResult] = useState(null);
   const mediaRecorderRef = useRef(null);
   const recordingIntervalRef = useRef(null);
   const fileInputRef = useRef(null);
+  const navigate = useNavigate();
 
-  // API Keys
-  const ASSEMBLYAI_API_KEY = process.env.REACT_APP_ASSEMBLYAI_API_KEY||'73b00662e49c4aa2bb270a3ec8705540';
-  const DEEPGRAM_API_KEY = process.env.REACT_APP_DEEPGRAM_API_KEY||'3020147ef806846932ecf29b63e07c1671a144e6';
+  // API Base URL - can be configured via environment variables
+  const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:5000';
+  
+  // API Keys - Use environment variables for security
+  const ASSEMBLYAI_API_KEY = process.env.REACT_APP_ASSEMBLYAI_API_KEY;
+  const DEEPGRAM_API_KEY = process.env.REACT_APP_DEEPGRAM_API_KEY;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!query.trim()) return;
+
+    setLoading(true);
+    setError(null);
+    
     try {
-      const response = await fetch("http://localhost:5000/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query })
+      const response = await fetch(`${API_BASE_URL}/product?style=${encodeURIComponent(query)}`, {
+        method: "GET",
+        headers: { 
+          "Content-Type": "application/json",
+        },
       });
 
+      if (!response.ok) {
+        throw new Error(`Search failed: ${response.status}`);
+      }
+
       const data = await response.json();
-      console.log("Response from backend:", data);
+      setSearchResults(data);
+      
+      // Navigate to search results page
+      navigate('/search-results', { state: { results: data, query } });
+      
     } catch (error) {
-      console.error("Error:", error);
+      console.error("Search error:", error);
+      setError(error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -41,9 +66,10 @@ function Header() {
   const transcribeWithAssemblyAI = async (audioBlob) => {
     try {
       if (!ASSEMBLYAI_API_KEY) {
-        throw new Error('AssemblyAI API key is missing');
+        throw new Error('AssemblyAI API key is missing. Please check your environment variables.');
       }
 
+      console.log('Uploading audio to AssemblyAI...');
       const uploadResponse = await fetch('https://api.assemblyai.com/v2/upload', {
         method: 'POST',
         headers: {
@@ -53,12 +79,14 @@ function Header() {
       });
 
       if (!uploadResponse.ok) {
-        throw new Error(`Upload failed: ${uploadResponse.status}`);
+        const errorText = await uploadResponse.text();
+        throw new Error(`Upload failed: ${uploadResponse.status} - ${errorText}`);
       }
 
       const uploadData = await uploadResponse.json();
       const audioUrl = uploadData.upload_url;
 
+      console.log('Starting transcription...');
       const transcriptionResponse = await fetch('https://api.assemblyai.com/v2/transcript', {
         method: 'POST',
         headers: {
@@ -72,7 +100,8 @@ function Header() {
       });
 
       if (!transcriptionResponse.ok) {
-        throw new Error(`Transcription request failed: ${transcriptionResponse.status}`);
+        const errorText = await transcriptionResponse.text();
+        throw new Error(`Transcription request failed: ${transcriptionResponse.status} - ${errorText}`);
       }
 
       const transcriptionData = await transcriptionResponse.json();
@@ -83,6 +112,7 @@ function Header() {
       let attempts = 0;
       const maxAttempts = 30; // 30 second timeout
 
+      console.log('Polling for transcription result...');
       while (attempts < maxAttempts) {
         const resultResponse = await fetch(`https://api.assemblyai.com/v2/transcript/${transcriptId}`, {
           headers: {
@@ -98,6 +128,7 @@ function Header() {
         
         if (resultData.status === 'completed') {
           transcribedText = resultData.text;
+          console.log('AssemblyAI transcription completed:', transcribedText);
           break;
         } else if (resultData.status === 'error') {
           throw new Error(`Transcription failed: ${resultData.error}`);
@@ -109,7 +140,7 @@ function Header() {
       }
 
       if (attempts >= maxAttempts) {
-        throw new Error('Transcription timeout');
+        throw new Error('Transcription timeout - took too long to process');
       }
 
       return transcribedText;
@@ -124,12 +155,13 @@ function Header() {
   const transcribeWithDeepgram = async (audioBlob) => {
     try {
       if (!DEEPGRAM_API_KEY) {
-        throw new Error('Deepgram API key is missing');
+        throw new Error('Deepgram API key is missing. Please check your environment variables.');
       }
 
       // Convert to array buffer for better compatibility
       const arrayBuffer = await audioBlob.arrayBuffer();
       
+      console.log('Sending audio to Deepgram...');
       const response = await fetch('https://api.deepgram.com/v1/listen', {
         method: 'POST',
         headers: {
@@ -147,7 +179,9 @@ function Header() {
       const data = await response.json();
       
       if (data.results && data.results.channels && data.results.channels.length > 0) {
-        return data.results.channels[0].alternatives[0].transcript;
+        const transcript = data.results.channels[0].alternatives[0].transcript;
+        console.log('Deepgram transcription completed:', transcript);
+        return transcript;
       } else {
         throw new Error('No transcription results from Deepgram');
       }
@@ -160,17 +194,24 @@ function Header() {
   const startVoiceRecording = async () => {
     // Check if API keys are available
     if (transcriptionService === 'assemblyai' && !ASSEMBLYAI_API_KEY) {
-      alert('AssemblyAI API key is not configured. Please check your environment variables.');
+      setError('AssemblyAI API key is not configured. Please check your environment variables.');
       return;
     }
     
     if (transcriptionService === 'deepgram' && !DEEPGRAM_API_KEY) {
-      alert('Deepgram API key is not configured. Please check your environment variables.');
+      setError('Deepgram API key is not configured. Please check your environment variables.');
       return;
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          sampleRate: 16000
+        } 
+      });
+      
       const mediaRecorder = new MediaRecorder(stream, { 
         mimeType: 'audio/webm;codecs=opus' 
       });
@@ -184,31 +225,18 @@ function Header() {
       
       mediaRecorder.onstop = async () => {
         const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-        
-        try {
-          let transcribedText = '';
-          
-          if (transcriptionService === 'assemblyai') {
-            transcribedText = await transcribeWithAssemblyAI(audioBlob);
-          } else if (transcriptionService === 'deepgram') {
-            transcribedText = await transcribeWithDeepgram(audioBlob);
-          }
-          
-          setQuery(transcribedText);
-        } catch (error) {
-          console.error('Error processing audio:', error);
-          alert(`Voice transcription failed: ${error.message}`);
-        }
+        await processVoiceSearch(audioBlob);
         
         // Stop all audio tracks
         stream.getTracks().forEach(track => track.stop());
       };
       
-      mediaRecorder.start();
+      mediaRecorder.start(1000); // Collect data every second
       setIsRecording(true);
+      setError(null);
       
-      // Set up 5-second recording timer
-      let timeLeft = 5;
+      // Set up 10-second recording timer
+      let timeLeft = 10;
       setRecordingTime(timeLeft);
       
       recordingIntervalRef.current = setInterval(() => {
@@ -222,7 +250,7 @@ function Header() {
       
     } catch (error) {
       console.error('Error accessing microphone:', error);
-      alert('Microphone access denied. Please allow microphone permissions.');
+      setError('Microphone access denied. Please allow microphone permissions.');
     }
   };
 
@@ -235,32 +263,125 @@ function Header() {
     }
   };
 
+  const processVoiceSearch = async (audioBlob) => {
+    setLoading(true);
+    setError(null);
+    setTranscriptionResult(null);
+
+    try {
+      let transcribedText = '';
+      const startTime = Date.now();
+      
+      if (transcriptionService === 'assemblyai') {
+        transcribedText = await transcribeWithAssemblyAI(audioBlob);
+      } else if (transcriptionService === 'deepgram') {
+        transcribedText = await transcribeWithDeepgram(audioBlob);
+      }
+      
+      const processingTime = Date.now() - startTime;
+      
+      setTranscriptionResult({
+        text: transcribedText,
+        service: transcriptionService,
+        processingTime: processingTime
+      });
+
+      if (transcribedText) {
+        setQuery(transcribedText);
+        
+        // Auto-submit the search if we have results
+        if (transcribedText.trim().length > 0) {
+          // Small delay to show transcription result before search
+          setTimeout(() => {
+            handleSubmit(new Event('submit'));
+          }, 500);
+        }
+      } else {
+        setError('No speech detected. Please try again.');
+      }
+      
+    } catch (error) {
+      console.error('Voice search error:', error);
+      setError(`Voice transcription failed: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleTranscriptionService = () => {
+    const newService = transcriptionService === 'assemblyai' ? 'deepgram' : 'assemblyai';
+    setTranscriptionService(newService);
+    setError(null);
+    setTranscriptionResult(null);
+  };
+
   const handleImageUpload = (e) => {
     const file = e.target.files[0];
-    if (file) {
-      setSelectedImage(file);
+    if (!file) return;
+
+    // Validate file type and size
+    if (!file.type.startsWith('image/')) {
+      setError('Please select a valid image file.');
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) { // 10MB limit
+      setError('Image size must be less than 10MB.');
+      return;
+    }
+
+    setSelectedImage(file);
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setImagePreview(e.target.result);
+    };
+    reader.readAsDataURL(file);
+
+    processImageSearch(file);
+  };
+
+  const processImageSearch = async (imageFile) => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('image', imageFile);
+      formData.append('k', '8'); // Number of results
+
+      const response = await fetch(`${API_BASE_URL}/filter-products`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Image search failed: ${response.status}`);
+      }
+
+      const data = await response.json();
       
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setImagePreview(e.target.result);
+      if (data.results && data.results.length > 0) {
+        setSearchResults(data);
+        setQuery('Similar products');
         
-        const formData = new FormData();
-        formData.append('image', file);
-        
-        fetch('http://localhost:5000/image-search', {
-          method: 'POST',
-          body: formData,
-        })
-        .then(response => response.json())
-        .then(data => {
-          console.log('Image search results:', data);
-          setQuery(data.tags?.join(' ') || "");
-        })
-        .catch(error => {
-          console.error('Error processing image:', error);
+        // Navigate to search results
+        navigate('/search-results', { 
+          state: { 
+            results: data, 
+            query: 'Similar products',
+            searchType: 'image' 
+          } 
         });
-      };
-      reader.readAsDataURL(file);
+      } else {
+        setError('No similar products found.');
+      }
+      
+    } catch (error) {
+      console.error('Image search error:', error);
+      setError(error.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -274,11 +395,35 @@ function Header() {
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+    setQuery("");
   };
 
-  const toggleTranscriptionService = () => {
-    setTranscriptionService(prev => prev === 'assemblyai' ? 'deepgram' : 'assemblyai');
+  const clearSearch = () => {
+    setQuery("");
+    setSearchResults(null);
+    setError(null);
+    setTranscriptionResult(null);
+    clearImage();
   };
+
+  // Keyboard shortcuts
+  React.useEffect(() => {
+    const handleKeyPress = (e) => {
+      // Ctrl+K or Cmd+K for search focus
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        document.querySelector('input[type="text"]')?.focus();
+      }
+      
+      // Escape to clear search
+      if (e.key === 'Escape') {
+        clearSearch();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyPress);
+    return () => document.removeEventListener('keydown', handleKeyPress);
+  }, []);
 
   return (
     <header>
@@ -296,52 +441,92 @@ function Header() {
             </div>
 
             <div className="d-flex align-items-center gap-3 w-100">
-              {/* Input Field */}
+              {/* Search Form */}
               <form className="flex-grow-1 position-relative" onSubmit={handleSubmit}>
-                <input
-                  type="text"
-                  className="form-control bg-white text-black pe-5"
-                  placeholder="Search..."
-                  style={{ minWidth: '250px' }}
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                />
-                
-                {imagePreview && (
-                  <div className="position-absolute top-0 end-0 mt-1 me-1">
-                    <img 
-                      src={imagePreview} 
-                      alt="Preview" 
-                      style={{ width: '30px', height: '30px', objectFit: 'cover', borderRadius: '4px' }}
-                    />
+                <div className="input-group">
+                  <input
+                    type="text"
+                    className="form-control bg-white text-black pe-5"
+                    placeholder="Search products by style or upload image..."
+                    style={{ minWidth: '300px' }}
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    disabled={loading}
+                  />
+                  
+                  {/* Loading Indicator */}
+                  {loading && (
+                    <div className="position-absolute end-0 top-50 translate-middle-y me-3">
+                      <Spinner animation="border" size="sm" />
+                    </div>
+                  )}
+                  
+                  {/* Clear Button */}
+                  {query && !loading && (
                     <button 
                       type="button" 
-                      className="btn-close btn-close-white"
-                      style={{ position: 'absolute', top: '-5px', right: '-5px', fontSize: '10px' }}
-                      onClick={clearImage}
-                    ></button>
+                      className="btn btn-link position-absolute end-0 top-50 translate-middle-y me-3"
+                      onClick={clearSearch}
+                      style={{ zIndex: 5 }}
+                    >
+                      <i className="bi bi-x text-muted"></i>
+                    </button>
+                  )}
+                  
+                  {/* Image Preview */}
+                  {imagePreview && (
+                    <div className="position-absolute start-0 top-50 translate-middle-y ms-2">
+                      <img 
+                        src={imagePreview} 
+                        alt="Preview" 
+                        style={{ 
+                          width: '24px', 
+                          height: '24px', 
+                          objectFit: 'cover', 
+                          borderRadius: '4px' 
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+                
+                {/* Transcription Result */}
+                {transcriptionResult && (
+                  <div className="position-absolute start-0 bottom-0 translate-middle-y mb-1 ms-2">
+                    <Badge bg="success" className="small">
+                      {transcriptionResult.service === 'deepgram' ? 'DG' : 'AAI'}: 
+                      {transcriptionResult.processingTime}ms
+                    </Badge>
                   </div>
                 )}
+                
+                {/* Keyboard Shortcut Hint */}
+                <small className="text-white-50 position-absolute start-0 bottom-0 translate-middle-y mb-1 ms-2">
+                  Press Ctrl+K to focus
+                </small>
               </form>
 
-              {/* Icons */}
-              <div className="d-flex align-items-center gap-3">
+              {/* Search Actions */}
+              <div className="d-flex align-items-center gap-2">
                 {/* Service Toggle Button */}
                 <button 
-                  className="btn p-0"
+                  className={`btn ${transcriptionService === 'deepgram' ? 'btn-warning' : 'btn-info'} btn-sm`}
                   onClick={toggleTranscriptionService}
                   title={`Switch to ${transcriptionService === 'assemblyai' ? 'Deepgram' : 'AssemblyAI'}`}
+                  disabled={loading || isRecording}
                 >
-                  <i className={`bi ${transcriptionService === 'assemblyai' ? 'bi-robot' : 'bi-magic'} text-white fs-5`}></i>
+                  <i className={`bi ${transcriptionService === 'assemblyai' ? 'bi-robot' : 'bi-magic'}`}></i>
+                  <small className="ms-1">{transcriptionService === 'assemblyai' ? 'AAI' : 'DG'}</small>
                 </button>
 
-                {/* Voice Recording Button */}
+                {/* Voice Search Button */}
                 <button 
-                  className={`btn p-0 ${isRecording ? 'recording' : ''}`}
+                  className={`btn ${isRecording ? 'btn-danger' : 'btn-outline-light'} btn-sm`}
                   onClick={isRecording ? stopVoiceRecording : startVoiceRecording}
-                  title={isRecording ? 'Stop recording' : 'Voice search'}
+                  title={isRecording ? 'Stop recording' : `Voice search with ${transcriptionService}`}
+                  disabled={loading}
                 >
-                  <i className={`bi ${isRecording ? 'bi-stop-circle-fill text-danger' : 'bi-mic-fill'} text-white fs-4`}></i>
+                  <i className={`bi ${isRecording ? 'bi-stop-fill' : 'bi-mic-fill'}`}></i>
                   {isRecording && (
                     <span className="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
                       {recordingTime}
@@ -349,13 +534,24 @@ function Header() {
                   )}
                 </button>
                 
-                {/* Image Upload Button */}
+                {/* Image Search Button */}
                 <button 
-                  className="btn p-0"
+                  className="btn btn-outline-light btn-sm"
                   onClick={triggerImageInput}
-                  title="Image search"
+                  title="Search by image"
+                  disabled={loading}
                 >
-                  <i className="bi bi-camera-fill text-white fs-4"></i>
+                  <i className="bi bi-camera-fill"></i>
+                </button>
+                
+                {/* Search Button */}
+                <button 
+                  className="btn btn-primary btn-sm"
+                  onClick={handleSubmit}
+                  disabled={loading || !query.trim()}
+                  title="Search products"
+                >
+                  <i className="bi bi-search"></i>
                 </button>
                 
                 {/* Hidden file input */}
@@ -373,22 +569,70 @@ function Header() {
           </Navbar.Collapse>
         </div>
       </Navbar>
+      
       <div className="d-none d-lg-block w-100">
         <Menu color="#00416A" />
       </div>
 
-      {/* Recording Indicator */}
+      {/* Error Alert */}
+      {error && (
+        <div className="container mt-2">
+          <Alert variant="danger" dismissible onClose={() => setError(null)}>
+            <Alert.Heading>
+              {transcriptionService === 'deepgram' ? 'Deepgram' : 'AssemblyAI'} Error
+            </Alert.Heading>
+            {error}
+          </Alert>
+        </div>
+      )}
+
+      {/* Recording Modal */}
       {isRecording && (
-        <div className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center" style={{ background: 'rgba(0,0,0,0.5)', zIndex: 1050 }}>
-          <div className="bg-white rounded p-4 text-center">
-            <div className="mb-3">
-              <i className="bi bi-mic-fill text-danger fs-1"></i>
+        <div className="modal show d-block" tabIndex="-1" style={{ background: 'rgba(0,0,0,0.5)', zIndex: 1050 }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">
+                  Voice Search with {transcriptionService === 'deepgram' ? 'Deepgram' : 'AssemblyAI'}
+                </h5>
+                <button type="button" className="btn-close" onClick={stopVoiceRecording}></button>
+              </div>
+              <div className="modal-body text-center">
+                <div className="mb-3">
+                  <i className="bi bi-mic-fill text-danger fs-1"></i>
+                </div>
+                <h6>Listening...</h6>
+                <p>Speak now. Recording will stop in {recordingTime} seconds</p>
+                <div className="progress mb-3">
+                  <div 
+                    className="progress-bar progress-bar-striped progress-bar-animated bg-danger" 
+                    style={{ width: `${((10 - recordingTime) / 10) * 100}%` }}
+                  ></div>
+                </div>
+                <div className="alert alert-info small">
+                  <i className="bi bi-info-circle"></i> Using {transcriptionService === 'deepgram' ? 
+                  'Deepgram (Real-time)' : 'AssemblyAI (High accuracy)'}
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button className="btn btn-danger" onClick={stopVoiceRecording}>
+                  <i className="bi bi-stop-fill"></i> Stop Recording
+                </button>
+              </div>
             </div>
-            <h5>Recording with {transcriptionService === 'assemblyai' ? 'AssemblyAI' : 'Deepgram'}</h5>
-            <p>Speak now. Recording will stop in {recordingTime} seconds</p>
-            <button className="btn btn-danger" onClick={stopVoiceRecording}>
-              Stop Recording
-            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Loading Overlay */}
+      {loading && (
+        <div className="position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center" 
+             style={{ background: 'rgba(0,0,0,0.5)', zIndex: 1050 }}>
+          <div className="bg-white rounded p-4 text-center">
+            <Spinner animation="border" variant="primary" />
+            <p className="mt-2 mb-0">
+              {transcriptionResult ? 'Searching products...' : `Processing with ${transcriptionService}...`}
+            </p>
           </div>
         </div>
       )}
