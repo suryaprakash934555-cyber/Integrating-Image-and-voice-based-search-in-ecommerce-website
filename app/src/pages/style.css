@@ -1,0 +1,76 @@
+.main-container{
+    height: 85vh;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.main-inner{
+    width: 95%;
+    height: 85vh;
+    background-color: #00416A;
+    display: flex;
+    align-items: start;
+    justify-content: center;
+    border-radius: 30px;
+}
+
+.fonts{
+    font-weight: bolder;
+    font-size: 100px;
+    color: white;
+    writing-mode:vertical-rl;     /* Vertical, right to left */
+    letter-spacing: 12px;
+    /* text-orientation: upright; */
+}
+
+.font {
+  font-size: 60px;
+  font-weight: bold;
+  color: white;
+}
+
+
+.img-h {
+  max-height: 500px;
+  object-fit: contain;
+}
+.brand{
+  height: 100px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.brand-inner{
+  background-color: #00416A;
+  height: 80px;
+  width: 90%;
+  padding: 20px;
+  border-radius: 30px;
+  color: white;
+  font-size: 30px;
+  font-weight: bold;
+}
+.product h1{
+  color: #00416A;
+}
+
+@media (max-width: 576px) {
+  .font {
+    font-size: 1.8rem;
+  }
+
+  .fonts {
+    font-size: 1.5rem;
+  }
+  .brand,.brand-inner{
+    height: auto;
+    width: inherit;
+    margin: 10px;
+  }
+
+  .img-h{
+    max-height: 200px;
+  }
+}
