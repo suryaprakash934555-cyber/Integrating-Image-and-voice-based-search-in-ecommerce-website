@@ -1,0 +1,122 @@
+.brand{
+  height: 100px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 40px 0;
+}
+.brand-inner{
+  background-color: #00416A;
+  height: 80px;
+  width: 90%;
+  padding: 20px;
+  border-radius: 30px;
+  color: white;
+  font-size: 30px;
+  font-weight: bold;
+  box-shadow: 0 10px 20px rgba(0, 65, 106, 0.15);
+}
+
+.brand-col {
+  position: relative;
+}
+
+.brand-item {
+  position: relative;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+}
+
+.brand-text {
+  font-size: 1.4rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  position: relative;
+  transition: all 0.3s ease;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.brand-item:hover .brand-text {
+  transform: scale(1.1);
+  color: #fff;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+.brand-item::after {
+  content: '';
+  position: absolute;
+  right: -15px;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 40px;
+  width: 1px;
+  background: linear-gradient(to bottom, transparent, rgba(255,255,255,0.5), transparent);
+}
+
+.brand-col:last-child .brand-item::after {
+  display: none;
+}
+
+/* Animation for brands */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.brand-col {
+  animation: fadeIn 0.6s ease forwards;
+}
+
+.brand-col:nth-child(1) { animation-delay: 0.1s; }
+.brand-col:nth-child(2) { animation-delay: 0.2s; }
+.brand-col:nth-child(3) { animation-delay: 0.3s; }
+.brand-col:nth-child(4) { animation-delay: 0.4s; }
+.brand-col:nth-child(5) { animation-delay: 0.5s; }
+.brand-col:nth-child(6) { animation-delay: 0.6s; }
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .brand {
+    height: auto;
+    margin: 30px 0;
+  }
+  
+  .brand-inner {
+    height: auto;
+    padding: 15px 10px;
+    width: 95%;
+  }
+  
+  .brand-text {
+    font-size: 1rem;
+  }
+  
+  .brand-item::after {
+    height: 30px;
+    right: -8px;
+  }
+}
+
+@media (max-width: 576px) {
+  .brand, .brand-inner {
+    height: auto;
+    width: inherit;
+    margin: 10px;
+    border-radius: 20px;
+  }
+  
+  .brand-text {
+    font-size: 0.9rem;
+    letter-spacing: 0.5px;
+  }
+  
+  .brand-item::after {
+    height: 20px;
+    right: -5px;
+  }
+}
